@@ -6,7 +6,7 @@
 
 - **系统信息展示**：计算机名、系统版本、CPU 核心数
 - **快速操作**：一键打开控制面板、任务管理器、设置、设备管理器
-- **虚拟 GPS 定位**：为 Windows 提供虚拟 GPS 定位服务，支持固定坐标设置
+- **虚拟 GPS 定位**：为 Windows 提供虚拟 GPS 驱动定位，支持固定坐标设置
 - **可扩展架构**：标签页式工具台结构，易于添加新功能
 
 ## 目录结构
@@ -17,8 +17,6 @@ WinHelper/
 │   ├── main.cpp           # 程序入口
 │   ├── tab_*.cpp/h        # 各功能标签页
 │   └── matrix_rain.*      # 背景特效
-├── service/               # GPS 桥接服务
-│   └── gps_bridge_service.*
 ├── driver/                # 虚拟 GNSS 驱动（需 WDK 构建）
 │   ├── virtual_gnss.inf
 │   └── virtual_gnss_driver.*
@@ -74,7 +72,6 @@ cmake --build build --config Release
 生成可执行文件：
 
 - `build/Release/WinHelper.exe` - 主程序
-- `build/Release/VirtualGPSBridge.exe` - GPS 桥接服务
 - `build/scripts/*.bat` - 安装脚本
 
 ## 运行
@@ -127,7 +124,6 @@ WinHelper 现已集成虚拟 GPS 定位系统，允许为 Windows 应用提供�
 
 - 完善虚拟 GPS 驱动的传感器数据上报
 - 增加 GPX 轨迹文件回放功能
-- 增加服务管理（启动/停止服务）
 - 增加网络诊断（IP、DNS、连通性）
 - 增加启动项管理
 - 增加日志面板与任务执行反馈

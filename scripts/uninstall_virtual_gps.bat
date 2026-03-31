@@ -16,21 +16,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [1/4] Stopping Virtual GPS Service...
-sc stop VirtualGPSBridge
-timeout /t 2 /nobreak >nul
-echo.
-
-echo [2/4] Removing Virtual GPS Service...
-sc delete VirtualGPSBridge
-if %errorLevel% equ 0 (
-    echo Service removed successfully.
-) else (
-    echo WARNING: Service removal failed or service does not exist.
-)
-echo.
-
-echo [3/4] Uninstalling Virtual GNSS Driver...
+echo [1/2] Uninstalling Virtual GNSS Driver...
 if exist "%~dp0..\driver\virtual_gnss.inf" (
     pnputil /delete-driver virtual_gnss.inf /uninstall /force
     if %errorLevel% equ 0 (
@@ -43,7 +29,7 @@ if exist "%~dp0..\driver\virtual_gnss.inf" (
 )
 echo.
 
-echo [4/4] Cleaning up certificates...
+echo [2/2] Cleaning up certificates...
 certutil -delstore Root "VirtualGPS Test Certificate"
 if %errorLevel% equ 0 (
     echo Certificate removed successfully.

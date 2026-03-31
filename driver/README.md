@@ -148,7 +148,7 @@ pnputil /enum-drivers | findstr virtual_gnss
 **Driver loads but no data**
 - Check Event Viewer → Windows Logs → System
 - Look for VirtualGNSS driver events
-- Verify service is running and connected
+- Verify WinHelper can open `\\.\VirtualGNSS`
 
 ## Device Symbolic Link
 
@@ -157,7 +157,7 @@ The driver creates a device with symbolic link:
 \\.\VirtualGNSS
 ```
 
-This is used by the service for IOCTL communication.
+This is used by WinHelper (or a test app) for IOCTL communication.
 
 ## Testing
 
@@ -175,7 +175,7 @@ devmgmt.msc
 
 ### Test IOCTL Communication
 
-Use the VirtualGPSBridge service or create a test application:
+Use WinHelper or create a test application:
 
 ```cpp
 HANDLE hDevice = CreateFile(
@@ -187,7 +187,7 @@ HANDLE hDevice = CreateFile(
 
 if (hDevice != INVALID_HANDLE_VALUE) {
     // Send coordinate
-    GPS_COORDINATE_DATA coord = { 37.3337, -121.8907, 25.0, 10.0, 0 };
+    GPS_COORDINATE_DATA coord = { 37.3337, -121.8907, 25.0, 10.0 };
     DWORD bytesReturned;
     
     DeviceIoControl(

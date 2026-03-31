@@ -4,7 +4,6 @@
 #include <shellapi.h>
 #include <shlwapi.h>
 #include <string>
-#include <fstream>
 
 #include "imgui.h"
 
@@ -20,6 +19,19 @@ static char s_latitude[32] = "37.3337";   // 默认圣荷西 1 S Market St
 static char s_longitude[32] = "-121.8907";
 static char s_altitude[32] = "25.0";
 static char s_statusMessage[256] = "";
+
+// IOCTL definitions (must match driver)
+#define IOCTL_VIRTUAL_GPS_SET_COORDINATE \
+    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_VIRTUAL_GPS_GET_COORDINATE \
+    CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+struct GPSCoordinateData {
+    double Latitude;
+    double Longitude;
+    double Altitude;
+    double ErrorRadius;
+};
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -85,61 +97,74 @@ static void ExecuteScript(const wchar_t* scriptName) {
     }
 }
 
-static void CheckStatus() {
-    // Check if service is running
-    SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
-    if (!scm) {
-        strcpy_s(s_statusMessage, "无法连接服务管理器");
-        return;
-    }
-    
-    SC_HANDLE service = OpenServiceW(scm, L"VirtualGPSBridge", SERVICE_QUERY_STATUS);
-    if (!service) {
-        strcpy_s(s_statusMessage, "服务未安装");
-        CloseServiceHandle(scm);
-        return;
-    }
-    
-    SERVICE_STATUS status;
-    if (QueryServiceStatus(service, &status)) {
-        if (status.dwCurrentState == SERVICE_RUNNING) {
-            strcpy_s(s_statusMessage, "服务运行中");
-        } else {
-            strcpy_s(s_statusMessage, "服务已停止");
-        }
-    } else {
-        strcpy_s(s_statusMessage, "无法查询服务状态");
-    }
-    
-    CloseServiceHandle(service);
-    CloseServiceHandle(scm);
+static HANDLE OpenDriverDevice() {
+    return CreateFileW(
+        L"\\\\.\\VirtualGNSS",
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
 }
 
-static void NotifyService() {
-    // Signal service to reload config
-    SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
-    if (!scm) {
-        strcpy_s(s_statusMessage, "无法连接服务管理器");
+static void CheckStatus() {
+    HANDLE hDevice = OpenDriverDevice();
+    if (hDevice == INVALID_HANDLE_VALUE) {
+        strcpy_s(s_statusMessage, "驱动未就绪或未安装");
         return;
     }
-    
-    SC_HANDLE service = OpenServiceW(scm, L"VirtualGPSBridge", SERVICE_USER_DEFINED_CONTROL);
-    if (!service) {
-        strcpy_s(s_statusMessage, "服务未安装，请先安装");
-        CloseServiceHandle(scm);
-        return;
-    }
-    
-    SERVICE_STATUS status;
-    // Send custom control code 128 to reload config
-    if (ControlService(service, 128, &status)) {
-        strcpy_s(s_statusMessage, "坐标已应用到服务");
+
+    GPSCoordinateData out{};
+    DWORD bytesReturned = 0;
+    BOOL ok = DeviceIoControl(
+        hDevice,
+        IOCTL_VIRTUAL_GPS_GET_COORDINATE,
+        nullptr,
+        0,
+        &out,
+        sizeof(out),
+        &bytesReturned,
+        nullptr);
+    CloseHandle(hDevice);
+
+    if (ok && bytesReturned == sizeof(out)) {
+        strcpy_s(s_statusMessage, "驱动通信正常");
     } else {
-        strcpy_s(s_statusMessage, "通知服务失败，请检查服务状态");
+        strcpy_s(s_statusMessage, "驱动已安装，但通信失败");
     }
-    
-    CloseServiceHandle(service);
-    CloseServiceHandle(scm);
+}
+
+static void ApplyCoordinateToDriver() {
+    HANDLE hDevice = OpenDriverDevice();
+    if (hDevice == INVALID_HANDLE_VALUE) {
+        strcpy_s(s_statusMessage, "无法打开驱动设备，请先安装驱动");
+        return;
+    }
+
+    GPSCoordinateData data{};
+    data.Latitude = atof(s_latitude);
+    data.Longitude = atof(s_longitude);
+    data.Altitude = atof(s_altitude);
+    data.ErrorRadius = 10.0;
+
+    DWORD bytesReturned = 0;
+    BOOL ok = DeviceIoControl(
+        hDevice,
+        IOCTL_VIRTUAL_GPS_SET_COORDINATE,
+        &data,
+        sizeof(data),
+        nullptr,
+        0,
+        &bytesReturned,
+        nullptr);
+    CloseHandle(hDevice);
+
+    if (ok) {
+        strcpy_s(s_statusMessage, "坐标已直接写入驱动");
+    } else {
+        strcpy_s(s_statusMessage, "写入驱动失败，请检查权限/驱动状态");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,17 +181,17 @@ void RenderTabVirtualGPS() {
         initialized = true;
     }
     
-    ImGui::TextUnformatted("\xe8\x99\x9a\xe6\x8b\x9f GPS \xe5\xae\x9a\xe4\xbd\x8d\xe6\x9c\x8d\xe5\x8a\xa1"); // 虚拟 GPS 定位服务
+    ImGui::TextUnformatted("\xe8\x99\x9a\xe6\x8b\x9f GPS \xe5\xae\x9a\xe4\xbd\x8d\xef\xbc\x88\xe7\x9b\xb4\xe8\xbf\x9e\xe9\xa9\xb1\xe5\x8a\xa8\xef\xbc\x89"); // 虚拟 GPS 定位（直连驱动）
     ImGui::Separator();
     
     // Installation section
     ImGui::TextUnformatted("\xe5\xae\x89\xe8\xa3\x85\xe7\xae\xa1\xe7\x90\x86\xef\xbc\x9a"); // 安装管理：
     
-    if (ImGui::Button("\xe5\xae\x89\xe8\xa3\x85\xe9\xa9\xb1\xe5\x8a\xa8\xe4\xb8\x8e\xe6\x9c\x8d\xe5\x8a\xa1")) { // 安装驱动与服务
+    if (ImGui::Button("\xe5\xae\x89\xe8\xa3\x85\xe9\xa9\xb1\xe5\x8a\xa8")) { // 安装驱动
         ExecuteScript(L"install_virtual_gps.bat");
     }
     ImGui::SameLine();
-    if (ImGui::Button("\xe5\x8d\xb8\xe8\xbd\xbd\xe9\xa9\xb1\xe5\x8a\xa8\xe4\xb8\x8e\xe6\x9c\x8d\xe5\x8a\xa1")) { // 卸载驱动与服务
+    if (ImGui::Button("\xe5\x8d\xb8\xe8\xbd\xbd\xe9\xa9\xb1\xe5\x8a\xa8")) { // 卸载驱动
         ExecuteScript(L"uninstall_virtual_gps.bat");
     }
     ImGui::SameLine();
@@ -194,7 +219,7 @@ void RenderTabVirtualGPS() {
     ImGui::SameLine();
     if (ImGui::Button("\xe5\xba\x94\xe7\x94\xa8\xe5\x9d\x90\xe6\xa0\x87")) { // 应用坐标
         SaveConfig();
-        NotifyService();
+        ApplyCoordinateToDriver();
     }
     
     ImGui::Spacing();

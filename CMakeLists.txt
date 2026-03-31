@@ -50,15 +50,6 @@ target_link_libraries(WinHelper PRIVATE
     shlwapi
 )
 
-# Virtual GPS Bridge Service
-add_executable(VirtualGPSBridge
-    service/gps_bridge_service.cpp
-)
-
-target_link_libraries(VirtualGPSBridge PRIVATE
-    shlwapi
-)
-
 # Copy scripts to build directory
 file(COPY ${CMAKE_SOURCE_DIR}/scripts/
      DESTINATION ${CMAKE_BINARY_DIR}/scripts/

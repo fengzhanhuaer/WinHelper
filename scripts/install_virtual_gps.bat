@@ -16,7 +16,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [1/5] Enabling Test Signing Mode...
+echo [1/3] Enabling Test Signing Mode...
 bcdedit /set testsigning on
 if %errorLevel% neq 0 (
     echo ERROR: Failed to enable test signing mode
@@ -41,23 +41,7 @@ if %errorLevel% neq 0 (
 )
 echo.
 
-echo [4/5] Installing Virtual GPS Service...
-if exist "%~dp0..\service\VirtualGPSBridge.exe" (
-    sc create VirtualGPSBridge binPath= "%~dp0..\service\VirtualGPSBridge.exe" start= auto DisplayName= "Virtual GPS Bridge Service"
-    if %errorLevel% equ 0 (
-        echo Service created successfully.
-        sc start VirtualGPSBridge
-        echo Service started.
-    ) else (
-        echo WARNING: Service creation failed. Service may already exist.
-    )
-) else (
-    echo WARNING: Service executable not found. Skipping service installation.
-    echo Expected location: %~dp0..\service\VirtualGPSBridge.exe
-)
-echo.
-
-echo [5/5] Installing Virtual GNSS Driver...
+echo [2/3] Installing Virtual GNSS Driver...
 if exist "%~dp0..\driver\virtual_gnss.inf" (
     pnputil /add-driver "%~dp0..\driver\virtual_gnss.inf" /install
     if %errorLevel% equ 0 (

@@ -10,10 +10,6 @@ echo [Test Signing Mode]
 bcdedit | findstr /i "testsigning"
 echo.
 
-echo [Virtual GPS Service Status]
-sc query VirtualGPSBridge
-echo.
-
 echo [Virtual GNSS Driver Status]
 pnputil /enum-drivers | findstr /i "virtual_gnss"
 echo.
