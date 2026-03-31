@@ -1,15 +1,14 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
-#include <shellapi.h>
-
-#include <string>
-#include <sstream>
-#include <thread>
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
+#include "matrix_rain.h"
+#include "tab_sysinfo.h"
+#include "tab_quickaction.h"
+#include "tab_about.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -102,49 +101,6 @@ static void CleanupDeviceD3D() {
     }
 }
 
-static std::string WideToUtf8(const std::wstring& text) {
-    if (text.empty()) {
-        return {};
-    }
-
-    int requiredSize = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (requiredSize <= 0) {
-        return {};
-    }
-
-    std::string result(static_cast<size_t>(requiredSize - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, result.data(), requiredSize, nullptr, nullptr);
-    return result;
-}
-
-static std::string GetComputerNameText() {
-    wchar_t buffer[MAX_COMPUTERNAME_LENGTH + 1]{};
-    DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
-    if (GetComputerNameW(buffer, &size)) {
-        return WideToUtf8(buffer);
-    }
-    return "Unknown";
-}
-
-static std::string GetWindowsVersionText() {
-    OSVERSIONINFOW osvi{};
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-#pragma warning(push)
-#pragma warning(disable : 4996)
-    BOOL ok = GetVersionExW(&osvi);
-#pragma warning(pop)
-    if (ok) {
-        std::ostringstream oss;
-        oss << "Windows " << osvi.dwMajorVersion << '.' << osvi.dwMinorVersion << " (Build " << osvi.dwBuildNumber << ')';
-        return oss.str();
-    }
-    return "Windows (Unknown Version)";
-}
-
-static void OpenTarget(const wchar_t* target) {
-    ShellExecuteW(nullptr, L"open", target, nullptr, nullptr, SW_SHOWNORMAL);
-}
-
 static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) {
         return TRUE;
@@ -210,6 +166,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
+    // Load a CJK font so Chinese characters render correctly instead of showing garbled boxes.
+    // Microsoft YaHei is shipped with Windows and covers the full CJK Unified Ideographs block.
+    io.Fonts->AddFontFromFileTTF(
+        "C:/Windows/Fonts/msyh.ttc",
+        18.0f,
+        nullptr,
+        io.Fonts->GetGlyphRangesChineseFull());
+
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
@@ -233,8 +197,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
 
+        // Draw Matrix rain into the background BEFORE any window, while the frame is open
+        RenderMatrixBackground();
+
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+
+        // Semi-transparent window so the Matrix rain shows through
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.06f, 0.04f, 0.72f));
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.0f, 0.35f, 0.1f, 0.9f));
 
         ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
         ImGui::Begin("Win Helper", nullptr, windowFlags);
@@ -243,49 +214,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         ImGui::Separator();
 
         if (ImGui::BeginTabBar("MainTabs")) {
-            if (ImGui::BeginTabItem("系统信息")) {
-                const std::string computerName = GetComputerNameText();
-                const std::string windowsVersion = GetWindowsVersionText();
-                ImGui::BulletText("计算机名: %s", computerName.c_str());
-                ImGui::BulletText("系统版本: %s", windowsVersion.c_str());
-                ImGui::BulletText("CPU 核心数: %u", std::thread::hardware_concurrency());
-                ImGui::EndTabItem();
-            }
+            RenderTabSysInfo();
+            RenderTabQuickAction();
 
-            if (ImGui::BeginTabItem("快速操作")) {
-                ImGui::TextUnformatted("常用入口：");
-                if (ImGui::Button("打开控制面板")) {
-                    OpenTarget(L"control.exe");
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("打开任务管理器")) {
-                    OpenTarget(L"taskmgr.exe");
-                }
-                if (ImGui::Button("打开 Windows 设置")) {
-                    OpenTarget(L"ms-settings:");
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("打开设备管理器")) {
-                    OpenTarget(L"devmgmt.msc");
-                }
-                ImGui::Spacing();
-                ImGui::TextWrapped("后续可在这里扩展：服务管理、网络诊断、启动项优化、文件清理等。\n当前版本聚焦基础框架与常用入口整合。");
-                ImGui::EndTabItem();
-            }
-
-            if (ImGui::BeginTabItem("关于")) {
-                ImGui::TextUnformatted("Win Helper");
-                ImGui::TextUnformatted("基于 Dear ImGui + Win32 + DirectX 11");
-                ImGui::TextUnformatted("用于快速聚合常见 Windows 管理入口。 ");
-                ImGui::EndTabItem();
-            }
+            RenderTabAbout();
             ImGui::EndTabBar();
         }
 
         ImGui::End();
+        ImGui::PopStyleColor(2); // WindowBg + TitleBgActive
 
         ImGui::Render();
-        const float clearColor[4] = {0.10f, 0.10f, 0.12f, 1.00f};
+
+        const float clearColor[4] = {0.02f, 0.04f, 0.02f, 1.00f};
         g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
         g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clearColor);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

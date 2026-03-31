@@ -34,6 +34,10 @@ target_link_libraries(imgui PUBLIC
 
 add_executable(WinHelper WIN32
     src/main.cpp
+    src/matrix_rain.cpp
+    src/tab_sysinfo.cpp
+    src/tab_quickaction.cpp
+    src/tab_about.cpp
 )
 
 target_include_directories(WinHelper PRIVATE
