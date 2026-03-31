@@ -1,0 +1,68 @@
+;
+; Virtual GNSS Sensor Driver INF
+; Copyright (c) 2026
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Sensor
+ClassGuid={5175D334-C371-4806-B3BA-71FD53C9258D}
+Provider=%ManufacturerName%
+CatalogFile=virtual_gnss.cat
+DriverVer=01/01/2026,1.0.0.0
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+virtual_gnss.dll=1,,
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64
+
+[Standard.NTamd64]
+%DeviceDesc%=VirtualGNSS_Install, Root\VirtualGNSS
+
+[VirtualGNSS_Install.NT]
+CopyFiles=UMDriverCopy
+
+[VirtualGNSS_Install.NT.hw]
+AddReg=VirtualGNSS_AddReg
+
+[VirtualGNSS_Install.NT.Services]
+AddService=WUDFRd,0x000001fa,WUDFRD_ServiceInstall
+
+[VirtualGNSS_Install.NT.Wdf]
+UmdfService=VirtualGNSS,VirtualGNSS_Install
+UmdfServiceOrder=VirtualGNSS
+UmdfKernelModeClientPolicy=AllowKernelModeClients
+UmdfFileObjectPolicy=AllowNullAndUnknownFileObjects
+UmdfFsContextUsePolicy=CannotUseFsContexts
+
+[VirtualGNSS_Install]
+UmdfLibraryVersion=2.25.0
+ServiceBinary=%13%\virtual_gnss.dll
+
+[VirtualGNSS_AddReg]
+HKR,,"LowerFilters",0x00010008,"WUDFRd"
+HKR,,"SensorType",0x00000000,"{9494A3B0-362D-4B26-B2E0-F1B3A5C86B8D}"
+
+[WUDFRD_ServiceInstall]
+DisplayName = %WudfRdDisplayName%
+ServiceType = 1
+StartType = 3
+ErrorControl = 1
+ServiceBinary = %12%\WUDFRd.sys
+
+[UMDriverCopy]
+virtual_gnss.dll
+
+[Strings]
+ManufacturerName="Virtual GPS Provider"
+DiskName="Virtual GNSS Sensor Installation Disk"
+DeviceDesc="Virtual GNSS Location Sensor"
+WudfRdDisplayName="Windows Driver Foundation - User-mode Driver Framework Reflector"

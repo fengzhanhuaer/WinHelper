@@ -37,6 +37,7 @@ add_executable(WinHelper WIN32
     src/matrix_rain.cpp
     src/tab_sysinfo.cpp
     src/tab_quickaction.cpp
+    src/tab_virtualgps.cpp
     src/tab_about.cpp
 )
 
@@ -46,4 +47,23 @@ target_include_directories(WinHelper PRIVATE
 
 target_link_libraries(WinHelper PRIVATE
     imgui
+    shlwapi
 )
+
+# Virtual GPS Bridge Service
+add_executable(VirtualGPSBridge
+    service/gps_bridge_service.cpp
+)
+
+target_link_libraries(VirtualGPSBridge PRIVATE
+    shlwapi
+)
+
+# Copy scripts to build directory
+file(COPY ${CMAKE_SOURCE_DIR}/scripts/
+     DESTINATION ${CMAKE_BINARY_DIR}/scripts/
+     FILES_MATCHING PATTERN "*.bat")
+
+# Note: Driver build requires WDK and must be built separately using Visual Studio
+# Driver files are located in driver/ directory
+# Use Visual Studio with WDK to build the UMDF2 driver

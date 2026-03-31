@@ -8,6 +8,7 @@
 #include "matrix_rain.h"
 #include "tab_sysinfo.h"
 #include "tab_quickaction.h"
+#include "tab_virtualgps.h"
 #include "tab_about.h"
 
 #pragma comment(lib, "d3d11.lib")
@@ -216,7 +217,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
         if (ImGui::BeginTabBar("MainTabs")) {
             RenderTabSysInfo();
             RenderTabQuickAction();
-
+            RenderTabVirtualGPS();
             RenderTabAbout();
             ImGui::EndTabBar();
         }

@@ -4,15 +4,33 @@
 
 ## 功能
 
-- 系统信息展示（计算机名、系统版本、CPU 核心数）
-- 快速打开常用系统入口（控制面板、任务管理器、设置、设备管理器）
-- 可扩展的标签页式工具台结构
+- **系统信息展示**：计算机名、系统版本、CPU 核心数
+- **快速操作**：一键打开控制面板、任务管理器、设置、设备管理器
+- **虚拟 GPS 定位**：为 Windows 提供虚拟 GPS 定位服务，支持固定坐标设置
+- **可扩展架构**：标签页式工具台结构，易于添加新功能
 
 ## 目录结构
 
-- `src/main.cpp`：主程序入口，Win32 窗口 + D3D11 + ImGui 渲染循环
-- `CMakeLists.txt`：CMake 构建脚本
-- `third_party/imgui`：Dear ImGui 源码目录，用于编译静态库 [`imgui`](CMakeLists.txt:13)
+```
+WinHelper/
+├── src/                    # 主程序源码
+│   ├── main.cpp           # 程序入口
+│   ├── tab_*.cpp/h        # 各功能标签页
+│   └── matrix_rain.*      # 背景特效
+├── service/               # GPS 桥接服务
+│   └── gps_bridge_service.*
+├── driver/                # 虚拟 GNSS 驱动（需 WDK 构建）
+│   ├── virtual_gnss.inf
+│   └── virtual_gnss_driver.*
+├── scripts/               # 安装/卸载脚本
+│   ├── install_virtual_gps.bat
+│   └── uninstall_virtual_gps.bat
+├── docs/                  # 文档
+│   ├── VIRTUAL_GPS_USER_GUIDE.md
+│   └── VIRTUAL_GPS_BUILD_GUIDE.md
+├── third_party/imgui/     # Dear ImGui 库
+└── CMakeLists.txt         # 构建配置
+```
 
 ## 前置要求
 
@@ -55,7 +73,9 @@ cmake --build build --config Release
 
 生成可执行文件：
 
-- `build/Release/WinHelper.exe`
+- `build/Release/WinHelper.exe` - 主程序
+- `build/Release/VirtualGPSBridge.exe` - GPS 桥接服务
+- `build/scripts/*.bat` - 安装脚本
 
 ## 运行
 
@@ -73,8 +93,40 @@ build\Release\WinHelper.exe
 2. 或在 VS Code 使用 CMake Tools 选择 MSVC Kit
 3. 或配置 `.vscode/c_cpp_properties.json` 指向 Windows SDK 与 MSVC 包含目录
 
+## 虚拟 GPS 功能
+
+WinHelper 现已集成虚拟 GPS 定位系统，允许为 Windows 应用提供模拟的 GPS 位置数据。
+
+### 快速使用
+
+1. 构建项目后，以管理员身份运行安装脚本：
+   ```bat
+   cd build\Release
+   ..\scripts\install_virtual_gps.bat
+   ```
+
+2. **重启计算机**（启用测试签名模式）
+
+3. 启动 WinHelper，切换到"虚拟定位"标签页
+
+4. 输入目标坐标并点击"应用坐标"
+
+### 详细文档
+
+- [用户指南](docs/VIRTUAL_GPS_USER_GUIDE.md) - 安装、配置和使用说明
+- [构建指南](docs/VIRTUAL_GPS_BUILD_GUIDE.md) - 驱动开发和签名详解
+
+### 注意事项
+
+- 需要启用 Windows 测试签名模式
+- 仅支持 Windows 11 x64
+- 驱动需要使用 WDK 单独构建
+- 仅用于开发和测试目的
+
 ## 后续扩展建议
 
+- 完善虚拟 GPS 驱动的传感器数据上报
+- 增加 GPX 轨迹文件回放功能
 - 增加服务管理（启动/停止服务）
 - 增加网络诊断（IP、DNS、连通性）
 - 增加启动项管理
