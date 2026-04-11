@@ -3,11 +3,16 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <locationapi.h>
+#include <objbase.h>
+#include <ctime>
+#include <cstdio>
 #include <string>
 
 #include "imgui.h"
 
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "locationapi.lib")
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -19,6 +24,14 @@ static char s_latitude[32] = "37.3337";   // 默认圣荷西 1 S Market St
 static char s_longitude[32] = "-121.8907";
 static char s_altitude[32] = "25.0";
 static char s_statusMessage[256] = "";
+
+// Current system location state
+static char s_systemLatitude[64] = "--";
+static char s_systemLongitude[64] = "--";
+static char s_systemAltitude[64] = "--";
+static char s_systemLocationStatus[256] = "未获取";
+static char s_systemLocationUpdatedAt[64] = "";
+static bool s_locationPermissionRequested = false;
 
 // IOCTL definitions (must match driver)
 #define IOCTL_VIRTUAL_GPS_SET_COORDINATE \
@@ -135,6 +148,127 @@ static void CheckStatus() {
     }
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4995) // Windows Location COM interfaces are deprecated but still required for desktop Win32 scenario.
+#endif
+static void RefreshSystemLocation() {
+    HRESULT hrCoInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    bool shouldCoUninitialize = SUCCEEDED(hrCoInit);
+    if (FAILED(hrCoInit) && hrCoInit != RPC_E_CHANGED_MODE) {
+        sprintf_s(s_systemLocationStatus, "COM 初始化失败 (0x%08lX)", static_cast<unsigned long>(hrCoInit));
+        return;
+    }
+
+    ILocation* pLocation = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_Location, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pLocation));
+    if (FAILED(hr)) {
+        sprintf_s(s_systemLocationStatus, "无法访问系统定位服务 (0x%08lX)", static_cast<unsigned long>(hr));
+        if (shouldCoUninitialize) {
+            CoUninitialize();
+        }
+        return;
+    }
+
+    LOCATION_REPORT_STATUS reportStatus = REPORT_NOT_SUPPORTED;
+    hr = pLocation->GetReportStatus(IID_ILatLongReport, &reportStatus);
+    if (SUCCEEDED(hr) && reportStatus != REPORT_RUNNING) {
+        if (reportStatus == REPORT_ACCESS_DENIED) {
+            if (!s_locationPermissionRequested) {
+                IID reportTypes[] = { IID_ILatLongReport };
+                pLocation->RequestPermissions(GetForegroundWindow(), reportTypes, 1, FALSE);
+                s_locationPermissionRequested = true;
+            }
+            strcpy_s(s_systemLocationStatus, "定位权限未授予，请到 系统设置 > 隐私与安全性 > 位置 开启权限");
+        } else if (reportStatus == REPORT_INITIALIZING) {
+            strcpy_s(s_systemLocationStatus, "系统定位服务初始化中，请稍后重试");
+        } else if (reportStatus == REPORT_NOT_SUPPORTED) {
+            strcpy_s(s_systemLocationStatus, "当前设备不支持位置服务");
+        } else {
+            strcpy_s(s_systemLocationStatus, "系统定位服务异常，请稍后重试");
+        }
+
+        pLocation->Release();
+        if (shouldCoUninitialize) {
+            CoUninitialize();
+        }
+        return;
+    }
+
+    ILocationReport* pReport = nullptr;
+    hr = pLocation->GetReport(IID_ILatLongReport, &pReport);
+    if (FAILED(hr) || pReport == nullptr) {
+        if (hr == HRESULT_FROM_WIN32(ERROR_NO_DATA) || hr == static_cast<HRESULT>(0x800700E8)) {
+            strcpy_s(s_systemLocationStatus, "系统暂未提供定位数据，请先开启定位并等待几秒后重试");
+        } else if (hr == E_ACCESSDENIED) {
+            strcpy_s(s_systemLocationStatus, "系统定位权限被拒绝，请在 Windows 设置中允许定位");
+        } else {
+            sprintf_s(s_systemLocationStatus, "无法读取系统位置 (0x%08lX)", static_cast<unsigned long>(hr));
+        }
+
+        if (pReport) {
+            pReport->Release();
+        }
+        pLocation->Release();
+        if (shouldCoUninitialize) {
+            CoUninitialize();
+        }
+        return;
+    }
+
+    ILatLongReport* pLatLongReport = nullptr;
+    hr = pReport->QueryInterface(IID_PPV_ARGS(&pLatLongReport));
+    pReport->Release();
+    if (FAILED(hr) || pLatLongReport == nullptr) {
+        sprintf_s(s_systemLocationStatus, "系统定位接口转换失败 (0x%08lX)", static_cast<unsigned long>(hr));
+        pLocation->Release();
+        if (shouldCoUninitialize) {
+            CoUninitialize();
+        }
+        return;
+    }
+
+    DOUBLE latitude = 0.0;
+    DOUBLE longitude = 0.0;
+    DOUBLE altitude = 0.0;
+
+    HRESULT hrLat = pLatLongReport->GetLatitude(&latitude);
+    HRESULT hrLon = pLatLongReport->GetLongitude(&longitude);
+    HRESULT hrAlt = pLatLongReport->GetAltitude(&altitude);
+
+    if (SUCCEEDED(hrLat) && SUCCEEDED(hrLon)) {
+        sprintf_s(s_systemLatitude, "%.6f", latitude);
+        sprintf_s(s_systemLongitude, "%.6f", longitude);
+
+        if (SUCCEEDED(hrAlt)) {
+            sprintf_s(s_systemAltitude, "%.2f m", altitude);
+        } else {
+            strcpy_s(s_systemAltitude, "--");
+        }
+
+        std::time_t now = std::time(nullptr);
+        std::tm localTm{};
+        if (localtime_s(&localTm, &now) == 0) {
+            std::strftime(s_systemLocationUpdatedAt, sizeof(s_systemLocationUpdatedAt), "%Y-%m-%d %H:%M:%S", &localTm);
+        } else {
+            strcpy_s(s_systemLocationUpdatedAt, "");
+        }
+
+        strcpy_s(s_systemLocationStatus, "系统位置获取成功");
+    } else {
+        strcpy_s(s_systemLocationStatus, "系统位置数据不完整");
+    }
+
+    pLatLongReport->Release();
+    pLocation->Release();
+    if (shouldCoUninitialize) {
+        CoUninitialize();
+    }
+}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 static void ApplyCoordinateToDriver() {
     HANDLE hDevice = OpenDriverDevice();
     if (hDevice == INVALID_HANDLE_VALUE) {
@@ -178,6 +312,7 @@ void RenderTabVirtualGPS() {
     static bool initialized = false;
     if (!initialized) {
         LoadConfig();
+        RefreshSystemLocation();
         initialized = true;
     }
     
@@ -199,6 +334,21 @@ void RenderTabVirtualGPS() {
         CheckStatus();
     }
     
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // Current system location
+    ImGui::TextUnformatted("当前系统位置：");
+    ImGui::Text("纬度: %s", s_systemLatitude);
+    ImGui::Text("经度: %s", s_systemLongitude);
+    ImGui::Text("海拔: %s", s_systemAltitude);
+    ImGui::Text("状态: %s", s_systemLocationStatus);
+    ImGui::Text("更新时间: %s", s_systemLocationUpdatedAt[0] != '\0' ? s_systemLocationUpdatedAt : "未刷新");
+
+    if (ImGui::Button("刷新系统位置")) {
+        RefreshSystemLocation();
+    }
+
     ImGui::Spacing();
     ImGui::Separator();
     
